@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: nodejs-app-summon-sidecar
+  name: nodejs-app-summon-sidecar
+  namespace: $APP_NAMESPACE
+spec:
+  selector:
+    matchLabels:
+      app: nodejs-app-summon-sidecar
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: nodejs-app-summon-sidecar
+    spec:
+      serviceAccountName: demo-app-summon-sidecar-sa
+      containers:
+        - name: nodejs-app-summon-sidecar
+          imagePullPolicy: Always
+          image: kanth22/file-summon-nodejs-app:1.0
+          env:
+            - name: CONJUR_AUTHN_TOKEN_FILE
+              value: /run/conjur/access-token
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: conjur-connect-summon
+          volumeMounts:
+            - mountPath: /run/conjur
+              name: conjur-access-token
+              readOnly: true
+            - mountPath: /etc/summon
+              name: summon-config
+              readOnly: true
+        - image: cyberark/conjur-kubernetes-authenticator
+          name: configurator
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - mountPath: /run/conjur
+              name: conjur-access-token
+          envFrom:
+            - configMapRef:
+                name: conjur-connect
+      volumes:
+        - name: summon-config
+          configMap:
+            name: summon-config-sidecar
+            defaultMode: 420
+        - name: conjur-access-token
+          emptyDir:
+            medium: Memory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodejs-app-summon-sidecar
+  namespace: $APP_NAMESPACE
+spec:
+  type: NodePort
+  ports:
+    - port: 8080
+      nodePort: 32095
+  selector:
+    app: nodejs-app-summon-sidecar
+---
